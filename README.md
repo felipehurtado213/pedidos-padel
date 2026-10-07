@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pedidos Pádel 🍹🥭
 
-## Getting Started
+App para vender en un club de pádel durante un torneo: los clientes piden por **WhatsApp** desde
+su lugar escaneando un QR, y el vendedor registra ventas, inventario y gastos desde el celular.
 
-First, run the development server:
+**👉 Para ponerla en marcha desde cero, sigue [GUIA-DESPLIEGUE.md](GUIA-DESPLIEGUE.md).**
+
+**Stack:** Next.js 16 (App Router, TypeScript) · Supabase (plan gratuito) · Tailwind CSS 4 · Recharts · Vercel.
+
+## Funciones
+
+**Clientes (`/`)**
+- Catálogo por secciones con foto, precio, selector de cantidad y "Agotado".
+- Ubicación recordada en el celular; botón **Pedir** abre WhatsApp con el mensaje listo.
+- Instalable como app (PWA) y pantalla "Sin conexión" si se cae la señal.
+
+**Vendedor (`/admin`, protegido)**
+- **Vender:** un toque = una venta, ×2…×5, mantener presionado para otra cantidad, **Deshacer** y anular ventas.
+- **Inventario:** crear/editar productos con foto (comprimida a WebP), +/− rápido, ajustes con historial.
+- **Gastos:** registro rápido por insumo (bolsas, guantes, limones…), edición y totales.
+- **Números:** ganancia neta, ingresos, gastos, más vendidos, ventas por hora, stock; filtro hoy / todo / fechas.
+- **QR:** descarga PNG y hoja carta para imprimir.
+- Instalable aparte como app "Ventas".
+
+## Comandos
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install        # instalar dependencias
+npm run dev        # desarrollo en http://localhost:3000
+npm run check      # TypeScript + ESLint
+npm run build      # compilación de producción
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Estructura
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+supabase/schema.sql            Script SQL único: tablas, RLS, RPC, vistas, storage, datos semilla
+src/proxy.ts                   Protege /admin y renueva la sesión (antes "middleware")
+src/app/page.tsx               Catálogo público
+src/app/admin/login/           Inicio de sesión
+src/app/admin/(panel)/         Vender · inventario · gastos · estadisticas · qr
+src/app/admin/(print)/         Hoja del QR para imprimir
+src/app/manifest.ts, icon.tsx  PWA de clientes · src/app/admin/manifest.webmanifest → PWA del vendedor
+src/lib/                       env (zod), auth, supabase/*, validation/*, formato, fechas, qr
+src/components/                Catálogo y componentes del panel
+public/sw.js, offline.html     Service worker mínimo (solo pantalla sin conexión)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Seguridad (resumen)
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Supabase Auth** con email + contraseña; registro público desactivado; usuarios creados a mano.
+- **Rol admin en base de datos** (`public.admins`), verificado en RLS, funciones RPC, servidor y proxy.
+- **RLS en todas las tablas.** El público solo lee la vista `public_products` (sin costos ni stock exacto).
+- **Ventas, deshacer y ajustes de stock** solo por funciones RPC atómicas (`SECURITY DEFINER`), sin stock negativo.
+- **Validación con zod** en cliente y servidor; ubicación limpiada y URL-encodeada en el enlace de WhatsApp.
+- **Cabeceras:** CSP, HSTS, `X-Frame-Options`, `nosniff`, `Referrer-Policy`.
+- **Solo la anon key** en variables `NEXT_PUBLIC_*`; la `service_role` nunca se usa. `.env.local` no se versiona.

@@ -1,26 +1,135 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ------------------------------------------------------------------
+   Paleta tropical: tamarindo · chile/tajín · mango · limón
+   Uso en Tailwind: bg-mango, text-tamarindo, border-limon-dark, etc.
+   ------------------------------------------------------------------ */
+@theme {
+  --color-crema: #fff8ec;
+  --color-arena: #f6e7cf;
+  --color-ink: #2b1a10;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-tamarindo: #6b3a1e;
+  --color-tamarindo-dark: #4a2612;
+  --color-tamarindo-soft: #ecdccb;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --color-chile: #e4572e;
+  --color-chile-dark: #b93d17;
+  --color-chile-soft: #fde1d6;
+
+  --color-mango: #ffb627;
+  --color-mango-dark: #d98e00;
+  --color-mango-soft: #ffeab3;
+
+  --color-limon: #7cb518;
+  --color-limon-dark: #4c7a0b;
+  --color-limon-soft: #e5f3c8;
+
+  --font-display: var(--font-fredoka), ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--font-nunito), ui-rounded, system-ui, sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(74 38 18 / 0.06), 0 8px 24px -12px rgb(74 38 18 / 0.25);
+
+  /* Animaciones suaves (se desactivan con "reducir movimiento") */
+  --animate-fade-up: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-shake: shake 0.4s ease-in-out;
+  --animate-float: float 4s ease-in-out infinite;
+  --animate-pop: pop 0.7s ease-out both;
+
+  @keyframes pop {
+    0% {
+      opacity: 0;
+      transform: translateY(0) scale(0.6);
+    }
+    20% {
+      opacity: 1;
+      transform: translateY(-6px) scale(1.15);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-40px) scale(1);
+    }
+  }
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20%,
+    60% {
+      transform: translateX(-6px);
+    }
+    40%,
+    80% {
+      transform: translateX(6px);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-6px) rotate(12deg);
+    }
   }
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-crema);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Foco visible y grueso para navegación con teclado. */
+:focus-visible {
+  outline: 3px solid var(--color-chile);
+  outline-offset: 2px;
+}
+
+/* Impresión: hoja carta, sin barras ni fondos de pantalla, colores exactos. */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-sheet {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    break-inside: avoid;
+  }
+}
+
+/* Respeta "reducir movimiento" del sistema. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
