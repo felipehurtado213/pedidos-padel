@@ -9,9 +9,9 @@ import { ProductCard } from "./ProductCard";
 const STORAGE_KEY = "pedidos:ubicacion";
 
 const SECTIONS: { category: ProductCategory; title: string; subtitle: string }[] = [
-  { category: "bebidas", title: "Bebidas micheladas", subtitle: "Bien frías, con limón y tajín" },
-  { category: "helados", title: "Helados", subtitle: "Paletas artesanales" },
-  { category: "snacks", title: "Para picar", subtitle: "Con limón, sal y chile" },
+  { category: "bebidas", title: "Bebidas micheladas", subtitle: "Con limón, sal, hielo al gusto y salsa chamoy" },
+  { category: "helados", title: "Helados", subtitle: "Paletas artesanales: mango biche, coco, maracuyá y maracumango" },
+  { category: "snacks", title: "Para picar", subtitle: "Con limón, sal y pimienta" },
   { category: "otros", title: "Otros", subtitle: "" },
 ];
 

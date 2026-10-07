@@ -141,7 +141,7 @@ export function ProductForm({ product, nextSortOrder, onClose }: Props) {
           maxLength={240}
           rows={2}
           className={`${inputClass} h-auto py-3 text-base`}
-          placeholder="Ej: Con limón, sal y borde de tajín"
+          placeholder="Ej: Con limón, sal, hielo al gusto y salsa chamoy"
         />
       </Field>
 

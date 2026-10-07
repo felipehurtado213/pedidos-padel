@@ -134,7 +134,7 @@ create trigger products_log_initial_stock
 
 -- ---------------------------------------------------------------------
 -- 5a. SUPPLIES · insumos que NO se venden pero generan gasto
---     (bolsas, guantes, limones, vasos, tajín...). Catálogo reutilizable
+--     (bolsas, guantes, limones, vasos, chamoy...). Catálogo reutilizable
 --     para registrar gastos rápido y ver cuánto se va en cada insumo.
 -- ---------------------------------------------------------------------
 create table if not exists public.supplies (
@@ -660,13 +660,13 @@ create policy product_images_admin_delete on storage.objects
 insert into public.products
   (name, description, category, price, unit_cost, stock, low_stock_threshold, sort_order)
 select * from (values
-  ('Tamarindo michelado',  'Tamarindo bien frío con limón, sal y borde de tajín.',      'bebidas', 8000,  3500, 40, 8,  10),
-  ('Cerveza michelada',    'Cerveza helada con limón, sal y escarchado de chile.',      'bebidas', 12000, 6000, 48, 10, 20),
-  ('Helado de mango',      'Paleta artesanal de mango maduro.',                         'helados', 6000,  2500, 20, 5,  30),
-  ('Helado de limón',      'Paleta artesanal de limón, súper refrescante.',             'helados', 6000,  2500, 20, 5,  40),
-  ('Helado de maracuyá',   'Paleta artesanal de maracuyá, dulce y ácida.',              'helados', 6000,  2500, 20, 5,  50),
-  ('Helado de coco',       'Paleta artesanal cremosa de coco.',                         'helados', 6000,  2500, 20, 5,  60),
-  ('Mango biche en tiras', 'Mango verde en tiras con limón, sal y pimienta o chile.',  'snacks',  7000,  3000, 30, 6,  70)
+  ('Tamarindo michelado',     'Tamarindo con limón, sal, hielo al gusto y salsa chamoy.',           'bebidas', 8000,  3500, 40, 8,  10),
+  ('Cerveza michelada',       'Cerveza helada con limón, sal, hielo al gusto y salsa chamoy.',      'bebidas', 12000, 6000, 48, 10, 20),
+  ('Helado de mango biche',   'Paleta artesanal de mango biche, ácida y refrescante.',              'helados', 6000,  2500, 20, 5,  30),
+  ('Helado de coco',          'Paleta artesanal cremosa de coco.',                                  'helados', 6000,  2500, 20, 5,  40),
+  ('Helado de maracuyá',      'Paleta artesanal de maracuyá, dulce y ácida.',                       'helados', 6000,  2500, 20, 5,  50),
+  ('Helado de maracumango',   'Paleta artesanal de maracuyá con mango.',                            'helados', 6000,  2500, 20, 5,  60),
+  ('Mango biche en tiras',    'Mango verde en tiras con limón, sal y pimienta.',                    'snacks',  7000,  3000, 30, 6,  70)
 ) as v(name, description, category, price, unit_cost, stock, low_stock_threshold, sort_order)
 where not exists (select 1 from public.products);
 
@@ -679,8 +679,9 @@ insert into public.supplies (name, unit, category, default_unit_cost) values
   ('Servilletas',       'paquete', 'empaques', 4000),
   ('Guantes',           'caja',    'insumos',  15000),
   ('Limones',           'kg',      'insumos',  4000),
-  ('Tajín / chile',     'frasco',  'insumos',  12000),
+  ('Salsa chamoy',      'frasco',  'insumos',  12000),
   ('Sal',               'kg',      'insumos',  2500),
+  ('Pimienta',          'frasco',  'insumos',  5000),
   ('Hielo',             'bolsa',   'hielo',    6000)
 on conflict do nothing;
 

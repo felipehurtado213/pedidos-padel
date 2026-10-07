@@ -58,9 +58,9 @@ GitHub guarda tu código; Vercel lo toma de ahí para publicarlo.
 5. Debe decir **"Success. No rows returned"**.
    - Si aparece un aviso de "destructive operation" o similar, confirma **Run this query**: el script es seguro y se puede repetir.
 
-Eso crea: tablas, seguridad (RLS), funciones, el espacio para fotos y 7 productos + 9 insumos de ejemplo.
+Eso crea: tablas, seguridad (RLS), funciones, el espacio para fotos y 7 productos (2 micheladas, 4 helados de 20 unidades cada uno y mango biche) + 10 insumos de ejemplo.
 
-✅ Comprueba en **Table Editor**: deben aparecer `products` (7 filas), `supplies` (9), `sales`, `stock_movements`, `expenses`, `admins`.
+✅ Comprueba en **Table Editor**: deben aparecer `products` (7 filas), `supplies` (10), `sales`, `stock_movements`, `expenses`, `admins`.
 
 ### 2.3 Cerrar el registro público (seguridad)
 
@@ -318,6 +318,10 @@ git push
 
 En 1–3 minutos queda en línea. Si solo cambias una variable de entorno en Vercel → **Redeploy** (sección 6, paso 4).
 Si cambias `supabase/schema.sql`, vuelve a pegarlo y ejecutarlo en el **SQL Editor** (es seguro repetirlo).
+
+> ⚠️ `schema.sql` **no modifica productos que ya existen** (solo crea los de ejemplo si la tabla está vacía).
+> Para cambiar productos de una base ya creada, usa el panel (**Inventario**) o un script de actualización
+> como `supabase/actualizacion-productos.sql` (sabores de helado, descripciones con chamoy, insumos).
 
 ---
 

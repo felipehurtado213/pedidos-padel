@@ -53,10 +53,11 @@ export default async function Home() {
       </header>
 
       <main id="menu" tabIndex={-1} className="relative mx-auto -mt-5 w-full max-w-3xl flex-1 rounded-t-[2rem] bg-crema px-4 pb-10">
-        <ol className="flex gap-2 overflow-x-auto pt-4 pb-1 text-sm font-bold text-tamarindo [scrollbar-width:none]">
-          {["Escribe dónde estás", "Elige y ajusta la cantidad", "Toca Pedir y envía el chat"].map((step, i) => (
-            <li key={step} className="flex shrink-0 items-center gap-1.5 rounded-full bg-white px-3 py-1.5 shadow-sm">
-              <span className="grid size-5 place-items-center rounded-full bg-mango text-xs text-tamarindo-dark">
+        {/* Los 3 pasos siempre visibles (sin desplazar de lado) */}
+        <ol className="grid grid-cols-3 gap-2 pt-4 text-center text-[13px] leading-tight font-bold text-tamarindo">
+          {["Escribe dónde estás", "Elige la cantidad", "Toca Pedir y envía el chat"].map((step, i) => (
+            <li key={step} className="flex flex-col items-center gap-1 rounded-2xl bg-white px-1.5 py-2 shadow-sm">
+              <span className="grid size-6 place-items-center rounded-full bg-mango text-xs text-tamarindo-dark">
                 {i + 1}
               </span>
               {step}

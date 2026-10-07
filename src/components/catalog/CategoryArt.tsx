@@ -28,13 +28,16 @@ export function CategoryArt({ category, className }: { category: ProductCategory
         <g>
           {/* pitillo */}
           <rect x="66" y="16" width="6" height="44" rx="3" fill="#e4572e" transform="rotate(14 69 38)" />
-          {/* vaso con borde de tajín */}
+          {/* vaso con borde de chamoy y cubos de hielo */}
           <path d="M34 40h52l-7 58a8 8 0 0 1-8 7H49a8 8 0 0 1-8-7z" fill="#fff" opacity=".9" />
           <path d="M37 52h46l-5 45a6 6 0 0 1-6 5H48a6 6 0 0 1-6-5z" fill="#8a4a24" />
-          <path d="M34 40h52v6H34z" fill="#e4572e" />
-          <circle cx="40" cy="43" r="1.6" fill="#b93d17" />
-          <circle cx="52" cy="42" r="1.4" fill="#b93d17" />
-          <circle cx="70" cy="44" r="1.6" fill="#b93d17" />
+          <rect x="44" y="56" width="11" height="11" rx="2.5" fill="#fff" opacity=".55" transform="rotate(-10 49 61)" />
+          <rect x="60" y="62" width="11" height="11" rx="2.5" fill="#fff" opacity=".5" transform="rotate(12 65 67)" />
+          <path d="M34 40h52v6H34z" fill="#c2321c" />
+          {/* gotas de chamoy */}
+          <path d="M42 46h4v5a2 2 0 0 1-4 0z" fill="#c2321c" />
+          <path d="M60 46h4v8a2 2 0 0 1-4 0z" fill="#c2321c" />
+          <path d="M74 46h4v4a2 2 0 0 1-4 0z" fill="#c2321c" />
           {/* rodaja de limón */}
           <circle cx="86" cy="42" r="12" fill="#7cb518" />
           <circle cx="86" cy="42" r="9" fill="#e5f3c8" />
@@ -58,9 +61,12 @@ export function CategoryArt({ category, className }: { category: ProductCategory
           <rect x="40" y="22" width="9" height="52" rx="4" fill="#b6d84a" transform="rotate(-12 44 48)" />
           <rect x="54" y="16" width="9" height="56" rx="4" fill="#cde06a" />
           <rect x="68" y="20" width="9" height="54" rx="4" fill="#a8cf3a" transform="rotate(12 72 47)" />
-          <circle cx="58" cy="30" r="1.8" fill="#e4572e" />
-          <circle cx="45" cy="40" r="1.6" fill="#e4572e" />
-          <circle cx="73" cy="36" r="1.8" fill="#e4572e" />
+          {/* pimienta */}
+          <circle cx="58" cy="30" r="1.5" fill="#2b1a10" />
+          <circle cx="45" cy="40" r="1.3" fill="#2b1a10" />
+          <circle cx="73" cy="36" r="1.5" fill="#2b1a10" />
+          <circle cx="59" cy="48" r="1.2" fill="#2b1a10" />
+          <circle cx="71" cy="52" r="1.2" fill="#2b1a10" />
           {/* vaso de papel */}
           <path d="M32 62h56l-8 44H40z" fill="#fff" />
           <path d="M36 74h48l-2 10H38z" fill="#7cb518" />

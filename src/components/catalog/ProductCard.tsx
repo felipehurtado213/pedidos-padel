@@ -60,7 +60,7 @@ export function ProductCard({ product, index, onOrder }: Props) {
             {product.name}
           </h3>
           {product.description && (
-            <p className="mt-1 line-clamp-2 text-sm leading-snug text-ink/70">{product.description}</p>
+            <p className="mt-1 line-clamp-3 text-sm leading-snug text-ink/70">{product.description}</p>
           )}
           <p className="mt-auto pt-1 font-display text-2xl font-bold text-chile">{formatCOP(product.price)}</p>
         </div>
