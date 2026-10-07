@@ -320,8 +320,7 @@ En 1–3 minutos queda en línea. Si solo cambias una variable de entorno en Ver
 Si cambias `supabase/schema.sql`, vuelve a pegarlo y ejecutarlo en el **SQL Editor** (es seguro repetirlo).
 
 > ⚠️ `schema.sql` **no modifica productos que ya existen** (solo crea los de ejemplo si la tabla está vacía).
-> Para cambiar productos de una base ya creada, usa el panel (**Inventario**) o un script de actualización
-> como `supabase/actualizacion-productos.sql` (sabores de helado, descripciones con chamoy, insumos).
+> Para cambiar nombres, descripciones, precios o fotos de productos que ya existen, usa el panel (**Inventario**).
 
 ---
 

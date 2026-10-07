@@ -6,17 +6,27 @@ import { Sheet } from "@/components/admin/Sheet";
 import { useToast } from "@/components/admin/Toaster";
 import { CategoryArt } from "@/components/catalog/CategoryArt";
 import { formatCOP } from "@/lib/format";
-import type { Product } from "@/types/db";
+import type { Product, Promotion } from "@/types/db";
 import { adjustStock } from "./actions";
 import { ProductForm } from "./ProductForm";
+import { PromotionForm } from "./PromotionForm";
 import { StockAdjustForm } from "./StockAdjustForm";
 
 type Editing = { kind: "new" } | { kind: "edit"; id: string } | null;
 
-export function InventoryManager({ products, loadError }: { products: Product[]; loadError: string | null }) {
+export function InventoryManager({
+  products,
+  promotions,
+  loadError,
+}: {
+  products: Product[];
+  promotions: Promotion[];
+  loadError: string | null;
+}) {
   const toast = useToast();
   const [editing, setEditing] = useState<Editing>(null);
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [promoSheet, setPromoSheet] = useState<{ id: string | null } | null>(null);
   const [, startTransition] = useTransition();
 
   // Los botones +/− actualizan el número al instante; el servidor confirma después.
@@ -64,6 +74,46 @@ export function InventoryManager({ products, loadError }: { products: Product[];
           + Nuevo
         </button>
       </div>
+
+      {/* Promociones (ej. 2 helados por $8.000) */}
+      <section aria-label="Promociones" className="mb-4 rounded-3xl bg-white p-3 shadow-card">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <h2 className="font-display text-lg font-semibold text-tamarindo">Promociones</h2>
+          <button
+            type="button"
+            onClick={() => setPromoSheet({ id: null })}
+            className="h-10 rounded-xl px-3 text-sm font-bold text-tamarindo"
+          >
+            + Nueva
+          </button>
+        </div>
+        {promotions.length === 0 ? (
+          <p className="px-1 pb-1 text-sm text-ink/70">Sin promociones.</p>
+        ) : (
+          <ul className="space-y-2">
+            {promotions.map((pr) => (
+              <li key={pr.id}>
+                <button
+                  type="button"
+                  onClick={() => setPromoSheet({ id: pr.id })}
+                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left ${pr.is_active ? "bg-chile-soft" : "bg-crema opacity-70"}`}
+                >
+                  <span aria-hidden className="text-2xl">{pr.category === "helados" ? "🍦" : "🎉"}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold text-tamarindo-dark">
+                      {pr.name} por {formatCOP(pr.price)}
+                    </span>
+                    <span className="block text-xs font-bold text-ink/70">
+                      {pr.is_active ? "Activa · se ve en el menú" : "Pausada"}
+                    </span>
+                  </span>
+                  <span className="text-sm font-bold text-tamarindo">Editar</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {loadError && (
         <p role="alert" className="mb-4 rounded-2xl bg-chile-soft px-4 py-3 font-bold text-chile-dark">
@@ -164,6 +214,20 @@ export function InventoryManager({ products, loadError }: { products: Product[];
             product={editingProduct}
             nextSortOrder={nextSortOrder}
             onClose={() => setEditing(null)}
+          />
+        )}
+      </Sheet>
+
+      <Sheet
+        open={promoSheet !== null}
+        onClose={() => setPromoSheet(null)}
+        title={promoSheet?.id ? "Editar promoción" : "Nueva promoción"}
+      >
+        {promoSheet && (
+          <PromotionForm
+            key={promoSheet.id ?? "new"}
+            promotion={promotions.find((p) => p.id === promoSheet.id) ?? null}
+            onClose={() => setPromoSheet(null)}
           />
         )}
       </Sheet>

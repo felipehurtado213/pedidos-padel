@@ -3,7 +3,7 @@ import { BallIcon, WhatsAppIcon } from "@/components/catalog/icons";
 import { env } from "@/lib/env";
 import { buildWhatsAppUrl } from "@/lib/whatsapp";
 import { createPublicClient } from "@/lib/supabase/public";
-import type { PublicProduct } from "@/types/db";
+import type { PublicProduct, PublicPromotion } from "@/types/db";
 
 // Página cacheada y regenerada cada 20 s (ISR): carga instantánea en datos móviles
 // y el "Agotado" se refleja en menos de medio minuto.
@@ -24,8 +24,18 @@ async function getProducts(): Promise<PublicProduct[] | null> {
   return data;
 }
 
+/** Promos activas. Si falla, el menú funciona igual (sin aviso de promo). */
+async function getPromotions(): Promise<PublicPromotion[]> {
+  const { data, error } = await createPublicClient()
+    .from("public_promotions")
+    .select("id, name, category, quantity, price")
+    .returns<PublicPromotion[]>();
+  if (error) console.error("[catalogo] Error leyendo public_promotions:", error.message);
+  return data ?? [];
+}
+
 export default async function Home() {
-  const products = await getProducts();
+  const [products, promotions] = await Promise.all([getProducts(), getPromotions()]);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -39,7 +49,7 @@ export default async function Home() {
         {/* Decoración */}
         <div aria-hidden className="absolute -top-10 -right-10 size-40 rounded-full bg-white/25" />
         <div aria-hidden className="absolute -bottom-16 -left-8 size-36 rounded-full bg-limon/30" />
-        <BallIcon className="animate-float absolute top-[4.5rem] right-5 size-12 drop-shadow-md" />
+        <BallIcon className="animate-float absolute top-[4.75rem] right-3 size-10 drop-shadow-md sm:right-5 sm:size-12" />
 
         <div className="relative mx-auto max-w-3xl">
           <p className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1 text-xs font-extrabold tracking-wide uppercase">
@@ -68,6 +78,7 @@ export default async function Home() {
         {products ? (
           <Catalog
             products={products}
+            promotions={promotions}
             sellerName={env.NEXT_PUBLIC_SELLER_NAME}
             whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_NUMBER}
           />

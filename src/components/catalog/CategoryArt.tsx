@@ -47,11 +47,16 @@ export function CategoryArt({ category, className }: { category: ProductCategory
 
       {category === "helados" && (
         <g>
-          <rect x="55" y="78" width="10" height="30" rx="5" fill="#d9b48a" />
-          <path d="M38 40a22 22 0 0 1 44 0v38a6 6 0 0 1-6 6H44a6 6 0 0 1-6-6z" fill="#ffb627" />
-          <path d="M38 62h44v16a6 6 0 0 1-6 6H44a6 6 0 0 1-6-6z" fill="#e4572e" opacity=".85" />
-          <circle cx="82" cy="34" r="8" fill={bg.helados[0]} />
-          <path d="M47 34q4-8 10-10" stroke="#fff" strokeWidth="4" strokeLinecap="round" fill="none" opacity=".7" />
+          {/* vaso de helado con dos bolas (mango y coco) */}
+          <circle cx="48" cy="56" r="17" fill="#ffb627" />
+          <circle cx="72" cy="56" r="17" fill="#fff6e3" />
+          <circle cx="60" cy="40" r="16" fill="#b6d84a" />
+          <path d="M53 34q4-6 10-7" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" fill="none" opacity=".75" />
+          <path d="M30 64h60l-7 38a6 6 0 0 1-6 5H43a6 6 0 0 1-6-5z" fill="#e4572e" />
+          <path d="M30 64h60v7H30z" fill="#b93d17" />
+          <path d="M45 78h30M47 88h26" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" opacity=".5" />
+          {/* cucharita */}
+          <rect x="78" y="22" width="5" height="34" rx="2.5" fill="#fff" transform="rotate(25 80 39)" />
         </g>
       )}
 

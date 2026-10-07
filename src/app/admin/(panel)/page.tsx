@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { bogotaDayStart } from "@/lib/dates";
-import type { DashboardStats, SaleDetailed } from "@/types/db";
+import type { DashboardStats, Promotion, SaleDetailed } from "@/types/db";
 import { QuickSale, type QuickProduct } from "./QuickSale";
 
 export const metadata = { title: "Venta rápida" };
@@ -9,7 +9,7 @@ export default async function VentaRapidaPage() {
   const { supabase } = await requireAdmin();
   const dayStart = bogotaDayStart();
 
-  const [productsRes, statsRes, recentRes] = await Promise.all([
+  const [productsRes, statsRes, recentRes, promosRes] = await Promise.all([
     supabase
       .from("products")
       .select("id, name, price, stock, low_stock_threshold, image_url, category")
@@ -22,8 +22,9 @@ export default async function VentaRapidaPage() {
       .from("sales_detailed")
       .select("*")
       .order("id", { ascending: false })
-      .limit(15)
+      .limit(30)
       .returns<SaleDetailed[]>(),
+    supabase.from("promotions").select("*").eq("is_active", true).order("name").returns<Promotion[]>(),
   ]);
 
   const stats = statsRes.data as DashboardStats | null;
@@ -35,6 +36,7 @@ export default async function VentaRapidaPage() {
     stats?.sales_count ?? 0,
     recentRes.data?.[0]?.id ?? 0,
     products.map((p) => `${p.id}:${p.stock}:${p.price}`).join(","),
+    (promosRes.data ?? []).map((p) => `${p.id}:${p.price}:${p.quantity}`).join(","),
   ].join("|");
 
   return (
@@ -47,6 +49,7 @@ export default async function VentaRapidaPage() {
         sales_count: Number(stats?.sales_count ?? 0),
       }}
       initialRecent={recentRes.data ?? []}
+      promotions={promosRes.data ?? []}
       dayStartIso={dayStart.toISOString()}
       loadError={productsRes.error ? "No se pudieron cargar los productos." : null}
     />

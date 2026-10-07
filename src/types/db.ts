@@ -46,6 +46,43 @@ export interface SaleDetailed {
   unit_cost: number | null;
   total: number;
   created_at: string;
+  /** Mismo valor en todas las filas de una promoción (null = venta normal). */
+  group_id: string | null;
+  promotion_name: string | null;
+}
+
+/** Fila de la vista public_promotions (lo que ve el público). */
+export interface PublicPromotion {
+  id: string;
+  name: string;
+  category: ProductCategory;
+  quantity: number;
+  price: number;
+}
+
+/** Fila completa de promotions (admin). */
+export interface Promotion extends PublicPromotion {
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Respuesta de register_promo_sale. */
+export interface PromoSaleResult {
+  group_id: string;
+  promotion: string;
+  quantity: number;
+  total: number;
+  items: { sale_id: number; product_id: string; stock: number; unit_price: number }[];
+}
+
+/** Respuesta de undo_sale (una venta o una promoción completa). */
+export interface UndoResult {
+  sale_id: number;
+  group_id: string | null;
+  quantity: number;
+  total: number;
+  items: { sale_id: number; product_id: string; quantity: number; stock: number }[];
 }
 
 export interface StockMovement {

@@ -8,7 +8,7 @@ import { useToast } from "@/components/admin/Toaster";
 import { CategoryArt } from "@/components/catalog/CategoryArt";
 import { formatCOP, formatDateTime, rpcErrorMessage } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import type { Product, SaleDetailed, SaleResult } from "@/types/db";
+import type { Product, PromoSaleResult, Promotion, SaleDetailed, SaleResult, UndoResult } from "@/types/db";
 import { revalidateCatalog } from "./actions";
 
 export type QuickProduct = Pick<
@@ -26,14 +26,70 @@ interface Props {
   initialProducts: QuickProduct[];
   initialTotals: Totals;
   initialRecent: SaleDetailed[];
+  promotions: Promotion[];
   dayStartIso: string;
   loadError: string | null;
 }
 
 const LONG_PRESS_MS = 450;
 const MAX_PER_SALE = 50;
+const RECENT_ROWS = 30;
 
-export function QuickSale({ initialProducts, initialTotals, initialRecent, dayStartIso, loadError }: Props) {
+/** "Helado de coco" → "coco" (para mostrar las promos en poco espacio). */
+const shortName = (name: string) => name.replace(/^helado de /i, "");
+
+/** Una venta normal, o una promoción (varias filas con el mismo group_id) mostrada como una sola. */
+interface RecentEntry {
+  key: string;
+  saleId: number; // cualquier fila sirve: undo_sale anula el grupo completo
+  label: string;
+  quantity: number;
+  total: number;
+  created_at: string;
+  isPromo: boolean;
+}
+
+function groupRecent(rows: SaleDetailed[]): RecentEntry[] {
+  const out: RecentEntry[] = [];
+  const groups = new Map<string, { entry: RecentEntry; names: string[]; promo: string }>();
+  for (const r of [...rows].sort((a, b) => a.id - b.id)) {
+    if (r.group_id) {
+      const g = groups.get(r.group_id);
+      if (g) {
+        g.names.push(shortName(r.product_name));
+        g.entry.quantity += r.quantity;
+        g.entry.total += r.total;
+        g.entry.label = `${g.promo}: ${g.names.join(" + ")}`;
+        continue;
+      }
+      const promo = r.promotion_name ?? "Promo";
+      const entry: RecentEntry = {
+        key: `g${r.group_id}`,
+        saleId: r.id,
+        label: `${promo}: ${shortName(r.product_name)}`,
+        quantity: r.quantity,
+        total: r.total,
+        created_at: r.created_at,
+        isPromo: true,
+      };
+      groups.set(r.group_id, { entry, names: [shortName(r.product_name)], promo });
+      out.push(entry);
+    } else {
+      out.push({
+        key: `s${r.id}`,
+        saleId: r.id,
+        label: `${r.product_name} ×${r.quantity}`,
+        quantity: r.quantity,
+        total: r.total,
+        created_at: r.created_at,
+        isPromo: false,
+      });
+    }
+  }
+  return out.reverse(); // más reciente primero
+}
+
+export function QuickSale({ initialProducts, initialTotals, initialRecent, promotions, dayStartIso, loadError }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const toast = useToast();
   const router = useRouter();
@@ -46,6 +102,7 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
   const [undoingId, setUndoingId] = useState<number | null>(null);
   const [flash, setFlash] = useState<Record<string, { n: number; qty: number }>>({});
   const [sheetProductId, setSheetProductId] = useState<string | null>(null);
+  const [promoId, setPromoId] = useState<string | null>(null);
   const [showRecent, setShowRecent] = useState(false);
 
   // Ventas en vuelo por producto: mientras haya alguna, no pisamos el stock local con el del servidor.
@@ -64,10 +121,23 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
   const patchStock = (id: string, fn: (s: number) => number) =>
     setProducts((ps) => ps.map((p) => (p.id === id ? { ...p, stock: fn(p.stock) } : p)));
 
+  const idle = (id: string) => (inFlight.current.get(id) ?? 0) === 0;
+
   function trackPending(productId: string, delta: 1 | -1) {
     pendingRef.current += delta;
     setPending(pendingRef.current);
     inFlight.current.set(productId, (inFlight.current.get(productId) ?? 0) + delta);
+  }
+
+  const addRecent = (rows: SaleDetailed[]) =>
+    setRecent((list) => [...rows, ...list].sort((a, b) => b.id - a.id).slice(0, RECENT_ROWS));
+
+  /** Trae el stock real de varios productos (cuando otro dispositivo vendió antes). */
+  async function refreshStocks(ids: string[]) {
+    const { data } = await supabase.from("products").select("id, stock").in("id", ids);
+    for (const row of (data ?? []) as { id: string; stock: number }[]) {
+      if (idle(row.id)) patchStock(row.id, () => row.stock);
+    }
   }
 
   async function sell(p: QuickProduct, quantity: number) {
@@ -95,46 +165,103 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
       setTotals((t) => ({ revenue: t.revenue - amount, units: t.units - quantity, sales_count: t.sales_count - 1 }));
       toast(`No se registró ${p.name}: ${rpcErrorMessage(error?.message)}`, "error");
       // Otro dispositivo vendió antes: traer el stock real para no seguir mostrando uno viejo.
-      if (error?.message.includes("INSUFFICIENT_STOCK")) {
-        const { data: fresh } = await supabase.from("products").select("stock").eq("id", p.id).maybeSingle();
-        if (fresh && (inFlight.current.get(p.id) ?? 0) === 0) patchStock(p.id, () => fresh.stock as number);
-      }
+      if (error?.message.includes("INSUFFICIENT_STOCK")) await refreshStocks([p.id]);
       return;
     }
 
     const r = data as SaleResult;
-    if ((inFlight.current.get(p.id) ?? 0) === 0) patchStock(p.id, () => r.stock); // valor real del servidor
-    setRecent((list) =>
-      [
-        {
-          id: r.sale_id,
-          product_id: p.id,
-          product_name: p.name,
-          quantity,
-          unit_price: p.price,
-          unit_cost: null,
-          total: r.total,
-          created_at: new Date().toISOString(),
-        },
-        ...list,
-      ]
-        .sort((a, b) => b.id - a.id)
-        .slice(0, 15),
-    );
+    if (idle(p.id)) patchStock(p.id, () => r.stock); // valor real del servidor
+    addRecent([
+      {
+        id: r.sale_id,
+        product_id: p.id,
+        product_name: p.name,
+        quantity,
+        unit_price: p.price,
+        unit_cost: null,
+        total: r.total,
+        created_at: new Date().toISOString(),
+        group_id: null,
+        promotion_name: null,
+      },
+    ]);
     toast(`✓ ${p.name} ×${quantity} · ${formatCOP(r.total)}`, "success");
     if (r.stock === 0) void revalidateCatalog();
   }
 
-  async function undo(sale: SaleDetailed) {
+  /** Vende una promoción (ej. 2 helados por $8.000) en una sola operación. */
+  async function sellPromo(promo: Promotion, ids: string[]) {
+    if (ids.length !== promo.quantity) return;
+    const need = new Map<string, number>();
+    ids.forEach((id) => need.set(id, (need.get(id) ?? 0) + 1));
+    for (const [id, n] of need) {
+      const p = products.find((x) => x.id === id);
+      if (!p || p.stock < n) {
+        toast(`${p?.name ?? "Producto"}: no hay stock suficiente`, "error");
+        return;
+      }
+    }
+    const names = ids.map((id) => products.find((p) => p.id === id)?.name ?? "");
+
+    // UI optimista
+    need.forEach((n, id) => patchStock(id, (s) => s - n));
+    setTotals((t) => ({
+      revenue: t.revenue + promo.price,
+      units: t.units + ids.length,
+      sales_count: t.sales_count + 1,
+    }));
+    navigator.vibrate?.([25, 30, 25]);
+    ids.forEach((id) => trackPending(id, 1));
+
+    const { data, error } = await supabase.rpc("register_promo_sale", {
+      p_promotion_id: promo.id,
+      p_product_ids: ids,
+    });
+    ids.forEach((id) => trackPending(id, -1));
+
+    if (error || !data) {
+      need.forEach((n, id) => patchStock(id, (s) => s + n));
+      setTotals((t) => ({
+        revenue: t.revenue - promo.price,
+        units: t.units - ids.length,
+        sales_count: t.sales_count - 1,
+      }));
+      toast(`No se registró la promo: ${rpcErrorMessage(error?.message)}`, "error");
+      if (error?.message.includes("INSUFFICIENT_STOCK")) await refreshStocks([...need.keys()]);
+      return;
+    }
+
+    const r = data as PromoSaleResult;
+    for (const it of r.items) if (idle(it.product_id)) patchStock(it.product_id, () => it.stock);
+    const now = new Date().toISOString();
+    addRecent(
+      r.items.map((it, i) => ({
+        id: it.sale_id,
+        product_id: it.product_id,
+        product_name: names[i],
+        quantity: 1,
+        unit_price: it.unit_price,
+        unit_cost: null,
+        total: it.unit_price,
+        created_at: now,
+        group_id: r.group_id,
+        promotion_name: r.promotion,
+      })),
+    );
+    toast(`✓ Promo ${r.promotion}: ${names.map(shortName).join(" + ")} · ${formatCOP(r.total)}`, "success");
+    if (r.items.some((it) => it.stock === 0)) void revalidateCatalog();
+  }
+
+  async function undo(entry: RecentEntry) {
     if (pendingRef.current > 0 || undoingId !== null) return;
-    setUndoingId(sale.id);
-    const { data, error } = await supabase.rpc("undo_sale", { p_sale_id: sale.id });
+    setUndoingId(entry.saleId);
+    const { data, error } = await supabase.rpc("undo_sale", { p_sale_id: entry.saleId });
     setUndoingId(null);
 
     if (error || !data) {
       if (error?.message.includes("NOTHING_TO_UNDO")) {
         // Ya la había anulado alguien más: la quitamos de la lista.
-        setRecent((list) => list.filter((s) => s.id !== sale.id));
+        router.refresh();
         toast("Esa venta ya estaba anulada.", "info");
       } else {
         toast(rpcErrorMessage(error?.message), "error");
@@ -142,24 +269,29 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
       return;
     }
 
-    const r = data as SaleResult;
-    const before = products.find((p) => p.id === r.product_id)?.stock;
-    patchStock(r.product_id, () => r.stock);
-    if (sale.created_at >= dayStartIso) {
+    const r = data as UndoResult;
+    const wasSoldOut = r.items.some((it) => products.find((p) => p.id === it.product_id)?.stock === 0);
+    for (const it of r.items) patchStock(it.product_id, () => it.stock);
+    if (entry.created_at >= dayStartIso) {
       setTotals((t) => ({
-        revenue: t.revenue - sale.total,
-        units: t.units - sale.quantity,
+        revenue: t.revenue - r.total,
+        units: t.units - r.quantity,
         sales_count: t.sales_count - 1,
       }));
     }
-    setRecent((list) => list.filter((s) => s.id !== sale.id));
+    const removed = new Set(r.items.map((it) => it.sale_id));
+    setRecent((list) => list.filter((s) => !removed.has(s.id)));
     navigator.vibrate?.([15, 40, 15]);
-    toast(`↩ Anulada: ${sale.product_name} ×${sale.quantity}`, "info");
-    if (before === 0) void revalidateCatalog(); // volvió a estar disponible
+    toast(`↩ Anulada: ${entry.label}`, "info");
+    if (wasSoldOut) void revalidateCatalog(); // volvió a estar disponible
   }
 
-  const last = recent[0];
+  const entries = useMemo(() => groupRecent(recent), [recent]);
+  const last = entries[0];
   const sheetProduct = sheetProductId ? products.find((p) => p.id === sheetProductId) ?? null : null;
+  const activePromo = promoId ? promotions.find((p) => p.id === promoId) ?? null : null;
+  // Promos que se pueden vender ahora (hay productos activos de esa categoría).
+  const sellablePromos = promotions.filter((pr) => products.some((p) => p.category === pr.category));
 
   return (
     <>
@@ -205,6 +337,27 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
         Toca para vender {perTap === 1 ? "1 unidad" : `${perTap} unidades`}. Mantén presionado para elegir otra cantidad.
       </p>
 
+      {/* Promociones: se venden con su precio especial para que la caja cuadre */}
+      {sellablePromos.map((pr) => (
+        <button
+          key={pr.id}
+          type="button"
+          onClick={() => setPromoId(pr.id)}
+          className="mb-3 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-chile-dark to-chile px-4 py-3 text-left text-white shadow-card transition active:scale-[0.98]"
+        >
+          <span aria-hidden className="text-3xl">
+            {pr.category === "helados" ? "🍦" : "🎉"}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-xl leading-tight font-bold">
+              Promo {pr.name} · {formatCOP(pr.price)}
+            </span>
+            <span className="block text-sm font-bold opacity-90">Toca y elige los sabores</span>
+          </span>
+          <span aria-hidden className="text-3xl leading-none">›</span>
+        </button>
+      ))}
+
       {loadError && (
         <p role="alert" className="mb-3 rounded-2xl bg-chile-soft px-4 py-3 font-bold text-chile-dark">
           {loadError}
@@ -243,7 +396,7 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
                 Última venta · ver todas
               </span>
               <span className="block truncate font-bold">
-                {last.product_name} ×{last.quantity} · {formatCOP(last.total)}
+                {last.label} · {formatCOP(last.total)}
               </span>
             </button>
             <button
@@ -252,7 +405,7 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
               disabled={pending > 0 || undoingId !== null}
               className="h-12 shrink-0 rounded-xl bg-mango px-4 font-display text-lg font-semibold text-tamarindo-dark transition active:scale-95 disabled:opacity-50"
             >
-              {undoingId === last.id ? "…" : "↩ Deshacer"}
+              {undoingId === last.saleId ? "…" : "↩ Deshacer"}
             </button>
           </div>
         </div>
@@ -271,29 +424,49 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
         )}
       </Sheet>
 
+      {/* Vender una promoción: elegir sabores */}
+      <Sheet
+        open={activePromo !== null}
+        onClose={() => setPromoId(null)}
+        title={activePromo ? `Promo ${activePromo.name}` : "Promo"}
+      >
+        {activePromo && (
+          <PromoPicker
+            key={activePromo.id}
+            promo={activePromo}
+            products={products.filter((p) => p.category === activePromo.category)}
+            onConfirm={(ids) => {
+              setPromoId(null);
+              void sellPromo(activePromo, ids);
+            }}
+          />
+        )}
+      </Sheet>
+
       {/* Últimas ventas, con opción de anular cualquiera */}
       <Sheet open={showRecent} onClose={() => setShowRecent(false)} title="Últimas ventas">
-        {recent.length === 0 ? (
+        {entries.length === 0 ? (
           <p className="text-ink/70">Aún no hay ventas.</p>
         ) : (
           <ul className="divide-y divide-arena rounded-2xl bg-white shadow-sm">
-            {recent.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 px-4 py-3">
+            {entries.map((e) => (
+              <li key={e.key} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-bold">
-                    {s.product_name} ×{s.quantity}
+                    {e.isPromo && <span aria-hidden>🍦 </span>}
+                    {e.label}
                   </p>
                   <p className="text-sm text-ink/70">
-                    {formatCOP(s.total)} · {formatDateTime(s.created_at)}
+                    {formatCOP(e.total)} · {formatDateTime(e.created_at)}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => undo(s)}
+                  onClick={() => undo(e)}
                   disabled={pending > 0 || undoingId !== null}
                   className="h-11 shrink-0 rounded-xl bg-chile-soft px-3 text-sm font-bold text-chile-dark disabled:opacity-50"
                 >
-                  {undoingId === s.id ? "…" : "Anular"}
+                  {undoingId === e.saleId ? "…" : "Anular"}
                 </button>
               </li>
             ))}
@@ -301,6 +474,92 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, daySt
         )}
       </Sheet>
     </>
+  );
+}
+
+/** Elegir los sabores de una promoción (se puede repetir sabor). */
+function PromoPicker({
+  promo,
+  products,
+  onConfirm,
+}: {
+  promo: Promotion;
+  products: QuickProduct[];
+  onConfirm: (ids: string[]) => void;
+}) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const count = (id: string) => picked.filter((x) => x === id).length;
+  const full = picked.length >= promo.quantity;
+  const nameOf = (id: string) => shortName(products.find((p) => p.id === id)?.name ?? "");
+  const normal = picked.reduce((s, id) => s + (products.find((p) => p.id === id)?.price ?? 0), 0);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-ink/70">
+        Toca {promo.quantity} {promo.quantity === 2 ? "sabores" : "productos"} (puedes repetir). Total{" "}
+        <strong className="text-ink">{formatCOP(promo.price)}</strong>.
+      </p>
+
+      <div className="grid grid-cols-2 gap-2">
+        {products.map((p) => {
+          const left = p.stock - count(p.id);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPicked((x) => [...x, p.id])}
+              disabled={full || left <= 0}
+              className="relative flex min-h-20 flex-col justify-center rounded-2xl bg-white p-3 text-left shadow-sm transition active:scale-95 disabled:opacity-40"
+            >
+              <span className="font-display text-lg leading-tight font-semibold text-tamarindo-dark capitalize">
+                {shortName(p.name)}
+              </span>
+              <span className="text-xs font-bold text-ink/70">{left > 0 ? `${left} disp.` : "Agotado"}</span>
+              {count(p.id) > 0 && (
+                <span className="absolute top-2 right-2 grid size-7 place-items-center rounded-full bg-chile-dark text-sm font-extrabold text-white">
+                  ×{count(p.id)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Lo elegido: tocar para quitar */}
+      <div className="flex flex-wrap gap-2" aria-live="polite">
+        {Array.from({ length: promo.quantity }, (_, i) =>
+          picked[i] ? (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setPicked((x) => x.filter((_, j) => j !== i))}
+              className="h-11 rounded-xl bg-mango-soft px-3 font-bold text-tamarindo-dark capitalize"
+              aria-label={`Quitar ${nameOf(picked[i])}`}
+            >
+              {nameOf(picked[i])} ✕
+            </button>
+          ) : (
+            <span key={i} className="grid h-11 place-items-center rounded-xl border-2 border-dashed border-arena px-3 text-sm font-bold text-ink/70">
+              Sabor {i + 1}
+            </span>
+          ),
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onConfirm(picked)}
+        disabled={!full}
+        className="h-16 w-full rounded-2xl bg-limon-dark font-display text-xl font-semibold text-white shadow-[0_4px_0_0_#365807] transition active:translate-y-1 active:shadow-none disabled:opacity-40 disabled:shadow-none"
+      >
+        {full ? `Vender promo · ${formatCOP(promo.price)}` : `Elige ${promo.quantity - picked.length} más`}
+      </button>
+      {full && normal > promo.price && (
+        <p className="text-center text-sm text-ink/70">
+          Precio normal {formatCOP(normal)} · el cliente ahorra {formatCOP(normal - promo.price)}
+        </p>
+      )}
+    </div>
   );
 }
 

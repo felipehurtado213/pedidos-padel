@@ -77,6 +77,28 @@ create trigger products_set_updated_at
 
 
 -- ---------------------------------------------------------------------
+-- 2b. PROMOTIONS · combos con precio especial (ej. 2 helados por $8.000)
+--     "quantity" unidades de cualquier producto de "category" (se pueden
+--     mezclar sabores) por "price" en total.
+-- ---------------------------------------------------------------------
+create table if not exists public.promotions (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null check (char_length(btrim(name)) between 1 and 60),
+  category    text not null check (category in ('bebidas', 'helados', 'snacks', 'otros')),
+  quantity    integer not null check (quantity between 2 and 10),
+  price       integer not null check (price between 0 and 10000000),
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+drop trigger if exists promotions_set_updated_at on public.promotions;
+create trigger promotions_set_updated_at
+  before update on public.promotions
+  for each row execute function public.set_updated_at();
+
+
+-- ---------------------------------------------------------------------
 -- 3. SALES · una fila por venta registrada
 -- ---------------------------------------------------------------------
 create table if not exists public.sales (
@@ -90,8 +112,15 @@ create table if not exists public.sales (
   created_at  timestamptz not null default now()
 );
 
+-- Ventas de una promoción: varias filas (una por unidad) con el mismo group_id.
+-- Se agregan con ALTER para que funcione también en bases ya creadas.
+alter table public.sales add column if not exists group_id uuid;
+alter table public.sales
+  add column if not exists promotion_id uuid references public.promotions (id) on delete set null;
+
 create index if not exists sales_created_at_idx on public.sales (created_at desc);
 create index if not exists sales_product_idx    on public.sales (product_id);
+create index if not exists sales_group_idx      on public.sales (group_id) where group_id is not null;
 
 
 -- ---------------------------------------------------------------------
@@ -197,6 +226,7 @@ alter table public.sales           enable row level security;
 alter table public.stock_movements enable row level security;
 alter table public.expenses        enable row level security;
 alter table public.supplies        enable row level security;
+alter table public.promotions      enable row level security;
 
 -- admins: cada usuario solo puede ver SU propia fila (para saber si es admin).
 drop policy if exists admins_select_self on public.admins;
@@ -237,13 +267,21 @@ create policy supplies_admin_all on public.supplies
   using ((select public.is_admin()))
   with check ((select public.is_admin()));
 
+-- promotions: el admin las edita; el público solo ve las activas vía public_promotions.
+drop policy if exists promotions_admin_all on public.promotions;
+create policy promotions_admin_all on public.promotions
+  for all to authenticated
+  using ((select public.is_admin()))
+  with check ((select public.is_admin()));
+
 
 -- ---------------------------------------------------------------------
 -- 6b. Privilegios (defensa en profundidad, además de RLS)
 -- ---------------------------------------------------------------------
 -- anon (visitantes sin sesión) no toca ninguna tabla directamente.
 revoke all on public.admins, public.products, public.sales,
-              public.stock_movements, public.expenses, public.supplies
+              public.stock_movements, public.expenses, public.supplies,
+              public.promotions
   from anon;
 
 -- Nadie escribe ventas, movimientos ni admins desde la API: solo las RPC.
@@ -284,6 +322,17 @@ with (security_invoker = false) as
 revoke all on public.public_products from anon, authenticated;
 grant select on public.public_products to anon, authenticated;
 
+-- Promociones activas para el público (solo lo necesario para mostrar el aviso).
+drop view if exists public.public_promotions;
+create view public.public_promotions
+with (security_invoker = false) as
+  select pr.id, pr.name, pr.category, pr.quantity, pr.price
+  from public.promotions pr
+  where pr.is_active;
+
+revoke all on public.public_promotions from anon, authenticated;
+grant select on public.public_promotions to anon, authenticated;
+
 -- Ventas con nombre de producto (para el admin). security_invoker = true:
 -- respeta el RLS de sales → solo el admin ve filas.
 drop view if exists public.sales_detailed;
@@ -297,9 +346,12 @@ with (security_invoker = true) as
     s.unit_price,
     s.unit_cost,
     s.total,
-    s.created_at
+    s.created_at,
+    s.group_id,
+    pr.name as promotion_name
   from public.sales s
-  join public.products p on p.id = s.product_id;
+  join public.products p on p.id = s.product_id
+  left join public.promotions pr on pr.id = s.promotion_id;
 
 revoke all on public.sales_detailed from anon, authenticated;
 grant select on public.sales_detailed to authenticated;
@@ -394,7 +446,9 @@ $$;
 
 
 -- Deshacer venta: si p_sale_id es null, deshace la ÚLTIMA venta registrada.
--- Devuelve el stock, deja constancia en la bitácora y borra la venta.
+-- Si la venta es parte de una PROMOCIÓN, anula la promoción completa
+-- (todas las filas del mismo group_id). Devuelve el stock, deja constancia
+-- en la bitácora y borra las ventas.
 create or replace function public.undo_sale(
   p_sale_id bigint default null
 )
@@ -405,7 +459,11 @@ set search_path = ''
 as $$
 declare
   v_sale  public.sales;
+  v_row   public.sales;
   v_stock integer;
+  v_items jsonb := '[]'::jsonb;
+  v_total integer := 0;
+  v_qty   integer := 0;
 begin
   if not public.is_admin() then
     raise exception 'NOT_AUTHORIZED' using errcode = '42501';
@@ -422,22 +480,130 @@ begin
     raise exception 'NOTHING_TO_UNDO' using errcode = 'P0002';
   end if;
 
-  update public.products
-     set stock = stock + v_sale.quantity
-   where id = v_sale.product_id
-  returning stock into v_stock;
+  for v_row in
+    select * from public.sales
+     where id = v_sale.id
+        or (v_sale.group_id is not null and group_id = v_sale.group_id)
+     order by id
+     for update
+  loop
+    update public.products
+       set stock = stock + v_row.quantity
+     where id = v_row.product_id
+    returning stock into v_stock;
 
-  insert into public.stock_movements (product_id, delta, reason, note)
-  values (v_sale.product_id, v_sale.quantity, 'deshacer', 'Venta #' || v_sale.id || ' anulada');
+    insert into public.stock_movements (product_id, delta, reason, note)
+    values (v_row.product_id, v_row.quantity, 'deshacer', 'Venta #' || v_row.id || ' anulada');
 
-  delete from public.sales where id = v_sale.id;
+    delete from public.sales where id = v_row.id;
+
+    v_items := v_items || jsonb_build_object(
+      'sale_id', v_row.id, 'product_id', v_row.product_id,
+      'quantity', v_row.quantity, 'stock', v_stock);
+    v_total := v_total + v_row.total;
+    v_qty   := v_qty + v_row.quantity;
+  end loop;
 
   return jsonb_build_object(
     'sale_id',    v_sale.id,
+    'group_id',   v_sale.group_id,
     'product_id', v_sale.product_id,
-    'quantity',   v_sale.quantity,
-    'total',      v_sale.total,
-    'stock',      v_stock
+    'quantity',   v_qty,
+    'total',      v_total,
+    'stock',      (v_items -> 0 ->> 'stock')::int,
+    'items',      v_items
+  );
+end;
+$$;
+
+
+-- Vender una PROMOCIÓN (ej. 2 helados por $8.000), todo o nada.
+-- p_product_ids: un id por unidad (se puede repetir: 2 de coco = [coco, coco]).
+-- El precio de la promo se reparte entre las unidades (8.000 → 4.000 + 4.000),
+-- así los totales de caja y el ranking por producto cuadran exacto.
+create or replace function public.register_promo_sale(
+  p_promotion_id uuid,
+  p_product_ids  uuid[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_promo  public.promotions;
+  v_group  uuid := gen_random_uuid();
+  v_n      integer := coalesce(array_length(p_product_ids, 1), 0);
+  v_base   integer;
+  v_extra  integer;
+  v_i      integer := 0;
+  v_pid    uuid;
+  v_price  integer;
+  v_stock  integer;
+  v_cost   integer;
+  v_sale   bigint;
+  v_items  jsonb := '[]'::jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'NOT_AUTHORIZED' using errcode = '42501';
+  end if;
+
+  select * into v_promo from public.promotions where id = p_promotion_id and is_active;
+  if not found then
+    raise exception 'PROMO_NOT_FOUND' using errcode = 'P0002';
+  end if;
+
+  if v_n <> v_promo.quantity then
+    raise exception 'INVALID_QUANTITY' using errcode = '22023';
+  end if;
+
+  -- Todos los productos deben existir, estar activos y ser de la categoría de la promo.
+  if exists (
+    select 1
+      from unnest(p_product_ids) as u(pid)
+      left join public.products p on p.id = u.pid
+     where p.id is null or p.category <> v_promo.category or not p.is_active
+  ) then
+    raise exception 'PROMO_INVALID_PRODUCT' using errcode = '22023';
+  end if;
+
+  -- Bloquear los productos en orden fijo (evita bloqueos cruzados entre dos celulares).
+  perform 1 from public.products where id = any (p_product_ids) order by id for update;
+
+  v_base  := v_promo.price / v_n;
+  v_extra := v_promo.price - v_base * v_n;  -- si no divide exacto, el sobrante va a la 1.ª unidad
+
+  foreach v_pid in array p_product_ids loop
+    v_i := v_i + 1;
+    v_price := v_base + case when v_i = 1 then v_extra else 0 end;
+
+    update public.products
+       set stock = stock - 1
+     where id = v_pid and stock >= 1
+    returning stock, unit_cost into v_stock, v_cost;
+
+    if not found then
+      -- Se revierte TODO lo anterior de esta llamada (nada queda a medias).
+      raise exception 'INSUFFICIENT_STOCK' using errcode = 'P0001';
+    end if;
+
+    insert into public.sales (product_id, quantity, unit_price, unit_cost, group_id, promotion_id)
+    values (v_pid, 1, v_price, v_cost, v_group, v_promo.id)
+    returning id into v_sale;
+
+    insert into public.stock_movements (product_id, delta, reason, sale_id, note)
+    values (v_pid, -1, 'venta', v_sale, 'Promo: ' || v_promo.name);
+
+    v_items := v_items || jsonb_build_object(
+      'sale_id', v_sale, 'product_id', v_pid, 'stock', v_stock, 'unit_price', v_price);
+  end loop;
+
+  return jsonb_build_object(
+    'group_id',  v_group,
+    'promotion', v_promo.name,
+    'quantity',  v_n,
+    'total',     v_promo.price,
+    'items',     v_items
   );
 end;
 $$;
@@ -531,7 +697,8 @@ begin
   select jsonb_build_object(
     'revenue',     coalesce((select sum(total)    from s), 0),
     'units',       coalesce((select sum(quantity) from s), 0),
-    'sales_count', (select count(*) from s),
+    -- Una promoción (varias filas con el mismo group_id) cuenta como UNA venta.
+    'sales_count', (select count(distinct coalesce(s.group_id::text, s.id::text)) from s),
     'cogs',        coalesce((select sum(quantity * unit_cost) from s where unit_cost is not null), 0),
     'expenses',    coalesce((select sum(amount) from e), 0),
 
@@ -606,6 +773,7 @@ $$;
 revoke all on function public.is_admin()                                from public, anon;
 revoke all on function public.register_sale(uuid, integer)              from public, anon;
 revoke all on function public.undo_sale(bigint)                         from public, anon;
+revoke all on function public.register_promo_sale(uuid, uuid[])         from public, anon;
 revoke all on function public.adjust_stock(uuid, integer, text, text)   from public, anon;
 revoke all on function public.get_dashboard_stats(timestamptz, timestamptz) from public, anon;
 revoke all on function public.log_initial_stock()                       from public, anon, authenticated;
@@ -614,6 +782,7 @@ revoke all on function public.set_updated_at()                          from pub
 grant execute on function public.is_admin()                                to authenticated;
 grant execute on function public.register_sale(uuid, integer)              to authenticated;
 grant execute on function public.undo_sale(bigint)                         to authenticated;
+grant execute on function public.register_promo_sale(uuid, uuid[])         to authenticated;
 grant execute on function public.adjust_stock(uuid, integer, text, text)   to authenticated;
 grant execute on function public.get_dashboard_stats(timestamptz, timestamptz) to authenticated;
 
@@ -662,10 +831,10 @@ insert into public.products
 select * from (values
   ('Tamarindo michelado',     'Tamarindo con limón, sal, hielo al gusto y salsa chamoy.',           'bebidas', 8000,  3500, 40, 8,  10),
   ('Cerveza michelada',       'Cerveza helada con limón, sal, hielo al gusto y salsa chamoy.',      'bebidas', 12000, 6000, 48, 10, 20),
-  ('Helado de mango biche',   'Paleta artesanal de mango biche, ácida y refrescante.',              'helados', 6000,  2500, 20, 5,  30),
-  ('Helado de coco',          'Paleta artesanal cremosa de coco.',                                  'helados', 6000,  2500, 20, 5,  40),
-  ('Helado de maracuyá',      'Paleta artesanal de maracuyá, dulce y ácida.',                       'helados', 6000,  2500, 20, 5,  50),
-  ('Helado de maracumango',   'Paleta artesanal de maracuyá con mango.',                            'helados', 6000,  2500, 20, 5,  60),
+  ('Helado de mango biche',   'Helado de mango biche, ácido y refrescante.',                        'helados', 5000,  2500, 20, 5,  30),
+  ('Helado de coco',          'Helado cremoso de coco.',                                            'helados', 5000,  2500, 20, 5,  40),
+  ('Helado de maracuyá',      'Helado de maracuyá, dulce y ácido.',                                 'helados', 5000,  2500, 20, 5,  50),
+  ('Helado de maracumango',   'Helado de maracuyá con mango.',                                      'helados', 5000,  2500, 20, 5,  60),
   ('Mango biche en tiras',    'Mango verde en tiras con limón, sal y pimienta.',                    'snacks',  7000,  3000, 30, 6,  70)
 ) as v(name, description, category, price, unit_cost, stock, low_stock_threshold, sort_order)
 where not exists (select 1 from public.products);
@@ -684,6 +853,11 @@ insert into public.supplies (name, unit, category, default_unit_cost) values
   ('Pimienta',          'frasco',  'insumos',  5000),
   ('Hielo',             'bolsa',   'hielo',    6000)
 on conflict do nothing;
+
+-- Promoción inicial: 2 helados (de cualquier sabor) por $8.000. Editable en Inventario.
+insert into public.promotions (name, category, quantity, price)
+select '2 helados', 'helados', 2, 8000
+where not exists (select 1 from public.promotions);
 
 
 -- Recargar el esquema de la API (PostgREST) para que vea los cambios ya.

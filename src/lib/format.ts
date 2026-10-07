@@ -41,6 +41,8 @@ export function rpcErrorMessage(message: string | undefined): string {
     INSUFFICIENT_STOCK: "No hay stock suficiente.",
     PRODUCT_NOT_FOUND: "El producto no existe.",
     NOTHING_TO_UNDO: "No hay ventas para deshacer.",
+    PROMO_NOT_FOUND: "La promoción no está activa.",
+    PROMO_INVALID_PRODUCT: "Esos productos no aplican para la promoción.",
   };
   if (!message) return "Ocurrió un error inesperado.";
   const code = Object.keys(map).find((k) => message.includes(k));

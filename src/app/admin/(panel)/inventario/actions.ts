@@ -12,6 +12,7 @@ import {
 import { adminClientOrNull } from "@/lib/auth";
 import { rpcErrorMessage } from "@/lib/format";
 import { PRODUCT_IMAGES_BUCKET, storagePathFromUrl } from "@/lib/storage";
+import { promotionIdSchema, promotionSchema } from "@/lib/validation/promotion";
 import {
   productCreateSchema,
   productIdSchema,
@@ -97,6 +98,40 @@ export async function deleteProduct(id: unknown): Promise<ActionResult> {
 
   await removeImage(supabase, before?.image_url);
   refresh();
+  return ok(undefined);
+}
+
+/* ------------------------------ Promociones ------------------------------ */
+
+function refreshPromos() {
+  revalidatePath("/admin/inventario");
+  revalidatePath("/admin");
+  revalidatePath("/"); // el aviso de la promo en el menú público
+}
+
+export async function createPromotion(input: unknown): Promise<ActionResult> {
+  const supabase = await adminClientOrNull();
+  if (!supabase) return fail(SESSION_EXPIRED);
+  const parsed = promotionSchema.safeParse(input);
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+
+  const { error } = await supabase.from("promotions").insert(parsed.data);
+  if (error) return fail(dbErrorMessage(error));
+  refreshPromos();
+  return ok(undefined);
+}
+
+export async function updatePromotion(id: unknown, input: unknown): Promise<ActionResult> {
+  const supabase = await adminClientOrNull();
+  if (!supabase) return fail(SESSION_EXPIRED);
+  const parsedId = promotionIdSchema.safeParse(id);
+  const parsed = promotionSchema.safeParse(input);
+  if (!parsedId.success) return fail("Promoción inválida.");
+  if (!parsed.success) return fail(firstIssue(parsed.error));
+
+  const { error } = await supabase.from("promotions").update(parsed.data).eq("id", parsedId.data);
+  if (error) return fail(dbErrorMessage(error));
+  refreshPromos();
   return ok(undefined);
 }
 

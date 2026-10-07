@@ -3,22 +3,28 @@
 import Image from "next/image";
 import { useState } from "react";
 import { formatCOP } from "@/lib/format";
+import { priceWithPromo } from "@/lib/promo";
 import { MAX_QTY } from "@/lib/whatsapp";
-import type { PublicProduct } from "@/types/db";
+import type { PublicProduct, PublicPromotion } from "@/types/db";
 import { CategoryArt } from "./CategoryArt";
 import { WhatsAppIcon } from "./icons";
 
 interface Props {
   product: PublicProduct;
+  /** Promo de la categoría (ej. 2 helados por $8.000), si hay. */
+  promo?: PublicPromotion | null;
   index: number;
   /** Devuelve true si se abrió WhatsApp (false si falta la ubicación). */
   onOrder: (product: PublicProduct, quantity: number) => boolean;
 }
 
-export function ProductCard({ product, index, onOrder }: Props) {
+export function ProductCard({ product, promo = null, index, onOrder }: Props) {
   const [qty, setQty] = useState(1);
   const [sent, setSent] = useState(false);
   const soldOut = !product.available;
+  const total = priceWithPromo(product.price, qty, promo);
+  // ¿La promo es un descuento real para este producto?
+  const promoApplies = promo !== null && priceWithPromo(product.price, promo.quantity, promo) < product.price * promo.quantity;
 
   function handleOrder() {
     if (soldOut) return;
@@ -63,6 +69,11 @@ export function ProductCard({ product, index, onOrder }: Props) {
             <p className="mt-1 line-clamp-3 text-sm leading-snug text-ink/70">{product.description}</p>
           )}
           <p className="mt-auto pt-1 font-display text-2xl font-bold text-chile">{formatCOP(product.price)}</p>
+          {promoApplies && promo && !soldOut && (
+            <p className="text-xs font-extrabold text-chile-dark">
+              Promo: {promo.quantity} por {formatCOP(promo.price)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -110,7 +121,7 @@ export function ProductCard({ product, index, onOrder }: Props) {
             <>
               <WhatsAppIcon className="size-5 shrink-0" />
               <span className="truncate">
-                Pedir{qty > 1 ? ` · ${formatCOP(product.price * qty)}` : ""}
+                Pedir{qty > 1 ? ` · ${formatCOP(total)}` : ""}
               </span>
             </>
           )}
