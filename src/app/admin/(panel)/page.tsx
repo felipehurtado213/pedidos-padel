@@ -24,7 +24,8 @@ export default async function VentaRapidaPage() {
       .order("id", { ascending: false })
       .limit(30)
       .returns<SaleDetailed[]>(),
-    supabase.from("promotions").select("*").eq("is_active", true).order("name").returns<Promotion[]>(),
+    // Todas (activas y apagadas): el interruptor de la promo vive en esta pantalla.
+    supabase.from("promotions").select("*").order("name").returns<Promotion[]>(),
   ]);
 
   const stats = statsRes.data as DashboardStats | null;
@@ -36,7 +37,7 @@ export default async function VentaRapidaPage() {
     stats?.sales_count ?? 0,
     recentRes.data?.[0]?.id ?? 0,
     products.map((p) => `${p.id}:${p.stock}:${p.price}`).join(","),
-    (promosRes.data ?? []).map((p) => `${p.id}:${p.price}:${p.quantity}`).join(","),
+    (promosRes.data ?? []).map((p) => `${p.id}:${p.price}:${p.quantity}:${p.is_active}`).join(","),
   ].join("|");
 
   return (

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useOptimistic, useState, useTransition } from "react";
+import { PromoToggle } from "@/components/admin/PromoToggle";
 import { Sheet } from "@/components/admin/Sheet";
 import { useToast } from "@/components/admin/Toaster";
 import { CategoryArt } from "@/components/catalog/CategoryArt";
@@ -92,22 +93,15 @@ export function InventoryManager({
         ) : (
           <ul className="space-y-2">
             {promotions.map((pr) => (
-              <li key={pr.id}>
+              <li key={pr.id} className="space-y-1">
+                {/* Un toque: enciende/apaga la promo en todo el sitio */}
+                <PromoToggle key={`${pr.id}:${pr.is_active}`} promotion={pr} />
                 <button
                   type="button"
                   onClick={() => setPromoSheet({ id: pr.id })}
-                  className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left ${pr.is_active ? "bg-chile-soft" : "bg-crema opacity-70"}`}
+                  className="h-9 w-full rounded-xl text-right text-sm font-bold text-tamarindo"
                 >
-                  <span aria-hidden className="text-2xl">{pr.category === "helados" ? "🍦" : "🎉"}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-bold text-tamarindo-dark">
-                      {pr.name} por {formatCOP(pr.price)}
-                    </span>
-                    <span className="block text-xs font-bold text-ink/70">
-                      {pr.is_active ? "Activa · se ve en el menú" : "Pausada"}
-                    </span>
-                  </span>
-                  <span className="text-sm font-bold text-tamarindo">Editar</span>
+                  Editar precio o unidades ›
                 </button>
               </li>
             ))}

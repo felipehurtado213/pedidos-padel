@@ -854,9 +854,10 @@ insert into public.supplies (name, unit, category, default_unit_cost) values
   ('Hielo',             'bolsa',   'hielo',    6000)
 on conflict do nothing;
 
--- Promoción inicial: 2 helados (de cualquier sabor) por $8.000. Editable en Inventario.
-insert into public.promotions (name, category, quantity, price)
-select '2 helados', 'helados', 2, 8000
+-- Promoción inicial: 2 helados (de cualquier sabor) por $8.000. Arranca APAGADA:
+-- se enciende con un toque en el panel (Vender o Inventario) cuando se necesite.
+insert into public.promotions (name, category, quantity, price, is_active)
+select '2 helados', 'helados', 2, 8000, false
 where not exists (select 1 from public.promotions);
 
 

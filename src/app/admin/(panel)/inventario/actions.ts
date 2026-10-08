@@ -135,6 +135,19 @@ export async function updatePromotion(id: unknown, input: unknown): Promise<Acti
   return ok(undefined);
 }
 
+/** Interruptor de un toque: activa o apaga la promo (aviso del menú, etiquetas y botón de venta). */
+export async function setPromotionActive(id: unknown, active: unknown): Promise<ActionResult> {
+  const supabase = await adminClientOrNull();
+  if (!supabase) return fail(SESSION_EXPIRED);
+  const parsedId = promotionIdSchema.safeParse(id);
+  if (!parsedId.success || typeof active !== "boolean") return fail("Datos inválidos.");
+
+  const { error } = await supabase.from("promotions").update({ is_active: active }).eq("id", parsedId.data);
+  if (error) return fail(dbErrorMessage(error));
+  refreshPromos();
+  return ok(undefined);
+}
+
 export async function adjustStock(input: unknown): Promise<ActionResult<{ stock: number }>> {
   const supabase = await adminClientOrNull();
   if (!supabase) return fail(SESSION_EXPIRED);

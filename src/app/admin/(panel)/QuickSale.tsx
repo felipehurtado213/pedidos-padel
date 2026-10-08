@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PromoToggle } from "@/components/admin/PromoToggle";
 import { Sheet } from "@/components/admin/Sheet";
 import { useToast } from "@/components/admin/Toaster";
 import { CategoryArt } from "@/components/catalog/CategoryArt";
@@ -290,8 +291,10 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, promo
   const last = entries[0];
   const sheetProduct = sheetProductId ? products.find((p) => p.id === sheetProductId) ?? null : null;
   const activePromo = promoId ? promotions.find((p) => p.id === promoId) ?? null : null;
-  // Promos que se pueden vender ahora (hay productos activos de esa categoría).
-  const sellablePromos = promotions.filter((pr) => products.some((p) => p.category === pr.category));
+  // Promos de categorías con productos a la venta (para mostrar su interruptor)…
+  const relevantPromos = promotions.filter((pr) => products.some((p) => p.category === pr.category));
+  // …y de esas, las que están encendidas (se pueden vender ahora).
+  const sellablePromos = relevantPromos.filter((pr) => pr.is_active);
 
   return (
     <>
@@ -337,7 +340,16 @@ export function QuickSale({ initialProducts, initialTotals, initialRecent, promo
         Toca para vender {perTap === 1 ? "1 unidad" : `${perTap} unidades`}. Mantén presionado para elegir otra cantidad.
       </p>
 
-      {/* Promociones: se venden con su precio especial para que la caja cuadre */}
+      {/* Interruptor de la promo: un toque la enciende o apaga en todo el sitio */}
+      {relevantPromos.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {relevantPromos.map((pr) => (
+            <PromoToggle key={`${pr.id}:${pr.is_active}`} promotion={pr} />
+          ))}
+        </div>
+      )}
+
+      {/* Promociones encendidas: se venden con su precio especial para que la caja cuadre */}
       {sellablePromos.map((pr) => (
         <button
           key={pr.id}
